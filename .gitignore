@@ -1,4 +1,4 @@
 /target
 /snake_database
 Cargo.lock
-.idea
+/.idea
