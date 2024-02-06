@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use surrealdb::sql::Thing;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FileInfo {
@@ -9,6 +10,22 @@ pub struct FileInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct UserCreateProfile {
+    pub user_name: String,
+    pub password: String,
+
+}
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserId {
+    pub uuid: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MasterKey {
+    pub master_key: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserInfo {
     pub accessible_files_uuids: Vec<String>,
     pub uuid: String,
@@ -25,7 +42,7 @@ pub struct UserLogin {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UuidUrl {
-    pub uuid: String,
+    pub session_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

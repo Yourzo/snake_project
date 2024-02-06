@@ -5,6 +5,7 @@ mod api;
 use actix_web::{HttpServer, App, };
 use actix_web::web::{Data};
 use actix_web::middleware::Logger;
+use crate::api::api::{get_all_allowed, get_all_allowed_files_info, login_user, set_user, upload};
 use crate::database::Database;
 
 #[actix_web::main]
@@ -21,6 +22,11 @@ async fn  main() -> std::io::Result<()> {
         let logger = Logger::default();
         App::new()
             .wrap(logger)
+            .service(login_user)
+            .service(upload)
+            .service(get_all_allowed_files_info)
+            .service(get_all_allowed)
+            .service(set_user)
             .app_data(db_data.clone())
     })
         .workers(2)

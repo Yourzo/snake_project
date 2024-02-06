@@ -8,11 +8,11 @@ use actix_web::web::{Json, Path, Data};
 use mime::{Mime};
 use fs::File;
 use crate::database::Database;
-use crate::models::file_models::{GetFileUrl, UserLogin, UserSessionIdMatch, UuidUrl};
+use crate::models::file_models::{GetFileUrl, MasterKey, UserCreateProfile, UserLogin, UserSessionIdMatch, UuidUrl};
 use crate::models::{FileInfo, UserInfo};
 
 
-//TODO passwords are saved as raw string, i need to put sha on it
+// Current version tested
 #[post("/login")]
 async fn login_user(body: Json<UserLogin>, db: Data<Database>) -> impl Responder {
     let user_login = body.into_inner();
@@ -57,12 +57,12 @@ async fn upload(mut payload: Multipart, req: HttpRequest, db: Data<Database>) ->
             Some(file_type) => {
                 db.into_inner().put_file(FileInfo {
                     uuid: String::from(session_id_created),
-                    name: String::from(field.name().clone()),
+                    name: String::from(field.name()),
                     path: String::from("custom path to be added"),
                     content_type: file_type.to_string(),
 
                 }).await;
-                let mut file = File::create(field.name().clone());
+                let file = File::create(field.name());
                 return HttpResponse::Ok().body("file created");
             }
             None => return HttpResponse::BadRequest().body("there is no content type"),
@@ -74,7 +74,7 @@ async fn upload(mut payload: Multipart, req: HttpRequest, db: Data<Database>) ->
 
 #[get("/get_all_file_info/{session_id}")]
 async fn get_all_allowed_files_info(path: Path<UuidUrl>, db: Data<Database>) -> impl Responder {
-    let all_files = db.get_all_file_info(path.into_inner().uuid).await;
+    let all_files = db.get_all_file_info(path.into_inner().session_id).await;
     match all_files {
         Some(files) => HttpResponse::Ok().json(files),
         None => HttpResponse::NoContent().body("i dunno what could be problem")
@@ -90,9 +90,9 @@ async fn get_all_allowed_files_info(path: Path<UuidUrl>, db: Data<Database>) -> 
 
 #[get("/all_allowed_files/{session_id}")]
 async fn get_all_allowed(path: Path<UuidUrl>, db: Data<Database>) -> impl Responder {
-    let uuid = path.into_inner().uuid;
-    if db.verify_session(uuid.clone()).await {
-        let res = db.get_all_users_files(uuid.clone()).await;
+    let uuid = path.into_inner();
+    if db.verify_session(uuid.session_id.clone()).await {
+        let res = db.get_all_users_files(uuid.session_id.clone()).await;
         match res {
             Some(files) => return HttpResponse::Ok().json(files),
             None => return HttpResponse::NotFound().body("some how i cant: ")
@@ -106,7 +106,24 @@ async fn get_all_allowed(path: Path<UuidUrl>, db: Data<Database>) -> impl Respon
 //     HttpResponse::Ok().content_type()
 // }
 
-#[post("/set_user")]
-async fn set_user(loading_user: Json<UserInfo>) -> impl Responder {
-
+#[post("/set_user/{master_key}")]
+async fn set_user(
+    loading_user: Json<UserCreateProfile>,
+    path: Path<MasterKey>,
+    db: Data<Database>
+) -> impl Responder {
+    let user_login = loading_user.into_inner();
+    let user_info = UserInfo {
+        accessible_files_uuids: Vec::new(),
+        uuid: Uuid::new_v4().to_string(),
+        user_name: user_login.user_name.clone(),
+        password: user_login.password,
+        users_path: "/".to_string() + &*user_login.user_name,
+    };
+    let res = db
+        .add_new_user(user_info).await;
+    match res {
+        Some(user) => HttpResponse::Ok().body(user.uuid),
+        None => HttpResponse::PreconditionFailed().body("this user creation failed")
+    }
 }
