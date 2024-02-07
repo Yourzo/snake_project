@@ -1,18 +1,16 @@
-use std::fs;
-use futures_lite::stream::StreamExt;
-use actix_multipart::Multipart;
+use actix_multipart::form::MultipartForm;
 use actix_web::{get, post, patch, HttpResponse, Responder, HttpRequest};
-use actix_web::http::header::CONTENT_LENGTH;
 use uuid::Uuid;
 use actix_web::web::{Json, Path, Data};
-use mime::{Mime};
-use fs::File;
 use crate::database::Database;
-use crate::models::file_models::{GetFileUrl, MasterKey, UserCreateProfile, UserLogin, UserSessionIdMatch, UuidUrl};
+use crate::models::file_models::{
+    GetFileUrl, MasterKey, UploadData, UploadForm,
+    UserCreateProfile, UserLogin, UserSessionIdMatch, UuidUrl
+};
 use crate::models::{FileInfo, UserInfo};
 
+static MAX_SIZE_ALLOWED: usize = 50_000_000;
 
-// Current version tested
 #[post("/login")]
 async fn login_user(body: Json<UserLogin>, db: Data<Database>) -> impl Responder {
     let user_login = body.into_inner();
@@ -35,44 +33,48 @@ async fn login_user(body: Json<UserLogin>, db: Data<Database>) -> impl Responder
     }
 }
 
-//server will receive file one at the time, client will decide where will file be placed
-//TODO
-#[post("/upload_file")]
-async fn upload(mut payload: Multipart, req: HttpRequest, db: Data<Database>) -> impl Responder {
-    let max_file_size: usize = 50_000;
-    let content_length: usize = match req.headers().get(CONTENT_LENGTH) {
-        Some(hv) => hv.to_str().unwrap_or("0").parse().unwrap(),
-        None => 0,
-    };
-    let mut buffer = Uuid::encode_buffer();
-    let session_id_created = Uuid::new_v4().simple().encode_lower(&mut buffer);
-
-    if content_length == 0 || content_length > max_file_size {
-        return HttpResponse::BadRequest().body("file is too big for this");
+#[post("/file_upload_data/{session_id}")]
+async fn info_to_upload(
+    db: Data<Database>,
+    session_id: Path<UuidUrl>,
+    body: Json<UploadData>,
+) -> impl Responder {
+    let upload_data = body.into_inner();
+    if db.verify_session(session_id.into_inner().session_id).await {
+        return HttpResponse::BadRequest().body("couldnt verify session")
     }
-
-    if let Ok(Some(mut field)) = payload.try_next().await {
-        let filetype: Option<&Mime>  = field.content_type();
-        match filetype {
-            Some(file_type) => {
-                db.into_inner().put_file(FileInfo {
-                    uuid: String::from(session_id_created),
-                    name: String::from(field.name()),
-                    path: String::from("custom path to be added"),
-                    content_type: file_type.to_string(),
-
-                }).await;
-                let file = File::create(field.name());
-                return HttpResponse::Ok().body("file created");
-            }
-            None => return HttpResponse::BadRequest().body("there is no content type"),
-        }
+    match db.put_file(FileInfo {
+        name: upload_data.name.clone(),
+        uuid: Uuid::new_v4().to_string(),
+        path: upload_data.path.clone(),
+        user_id: upload_data.user_id,
+    }).await {
+        Some(_) => HttpResponse::Ok().body("file info in database"),
+        None => HttpResponse::BadRequest().body("it's not in database")
     }
-
-    HttpResponse::Ok().into()
 }
 
-#[get("/get_all_file_info/{session_id}")]
+#[post("/upload_file/{session_id}")]
+async fn upload(
+    MultipartForm(form): MultipartForm<UploadForm>,
+    session_id: Path<UuidUrl>,
+    db: Data<Database>
+) -> impl Responder {
+    if !db.verify_session(session_id.into_inner().session_id).await {
+        return HttpResponse::BadRequest().body("session not found")
+    }
+    if form.file.size > MAX_SIZE_ALLOWED {
+        return HttpResponse::PreconditionFailed().body("file too big");
+    }
+    let path = format!(".\\user_files\\{}", form.file.file_name.clone().unwrap());
+    log::info!("saving file to {path}");
+    match form.file.file.persist(path.clone()) {
+        Ok(_) => HttpResponse::Ok().body("file saved"),
+        Err(_) => HttpResponse::BadRequest().body("file not saved"),
+    }
+}
+
+#[get("/get_all_files_info/{session_id}")]
 async fn get_all_allowed_files_info(path: Path<UuidUrl>, db: Data<Database>) -> impl Responder {
     let all_files = db.get_all_file_info(path.into_inner().session_id).await;
     match all_files {
@@ -81,13 +83,6 @@ async fn get_all_allowed_files_info(path: Path<UuidUrl>, db: Data<Database>) -> 
     }
 }
 
-// #[get("/get_file/{session_id}/{file_id}")]
-// async fn get_file(path: Path<GetFileUrl>, db: Data<Database>) -> impl Responder {
-//     if db.verify_session(path.into_inner().session_id) {
-//         //TODO have to figure out how to send "stream" to let user download files
-//     }
-// }
-
 #[get("/all_allowed_files/{session_id}")]
 async fn get_all_allowed(path: Path<UuidUrl>, db: Data<Database>) -> impl Responder {
     let uuid = path.into_inner();
@@ -95,21 +90,16 @@ async fn get_all_allowed(path: Path<UuidUrl>, db: Data<Database>) -> impl Respon
         let res = db.get_all_users_files(uuid.session_id.clone()).await;
         match res {
             Some(files) => return HttpResponse::Ok().json(files),
-            None => return HttpResponse::NotFound().body("some how i cant: ")
+            None => return HttpResponse::NotFound().body("some how i cant: "),
         }
     }
-    HttpResponse::Unauthorized().body("nouh")
+    HttpResponse::Unauthorized().body("session was not found")
 }
-
-// #[get("/download_file/{session_id}/{file_id}")]
-// async fn download_file(path: Path<GetFileUrl>, db: Data<Database>) -> impl  Responder {
-//     HttpResponse::Ok().content_type()
-// }
 
 #[post("/set_user/{master_key}")]
 async fn set_user(
     loading_user: Json<UserCreateProfile>,
-    path: Path<MasterKey>,
+    _path: Path<MasterKey>,
     db: Data<Database>
 ) -> impl Responder {
     let user_login = loading_user.into_inner();

@@ -1,12 +1,25 @@
+use actix_multipart::form::{MultipartForm, tempfile::TempFile};
 use serde::{Deserialize, Serialize};
-use surrealdb::sql::Thing;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FileInfo {
     pub uuid: String,
+    pub user_id: String,
     pub name: String,
     pub path: String,
-    pub content_type: String,
+}
+#[derive(Debug, MultipartForm)]
+pub struct UploadForm {
+    #[multipart(rename = "file")]
+    pub file: TempFile,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UploadData {
+    pub name: String,
+    pub file_name: String,
+    pub path: String,
+    pub user_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -31,7 +44,7 @@ pub struct UserInfo {
     pub uuid: String,
     pub user_name: String,
     pub password: String,
-    pub users_path: String,
+    pub users_path: String, // ! critical, this should never leave the server
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

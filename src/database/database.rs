@@ -26,13 +26,32 @@ impl Database {
         })
     }
 
+    pub async fn add_allowed_file_to_user(&self, user_id: String, file_id: String) -> Option<UserInfo> {
+        let user_info: Result<Option<UserInfo>, Error> = self
+            .client
+            .select(("user", user_id.clone()))
+            .await;
+        match user_info {
+            Ok(Some(mut info)) => {
+                let res: Result<Option<UserInfo>, Error> = self
+                    .client
+                    .update(("user", user_id))
+                    .content(info.accessible_files_uuids.push(file_id))
+                    .await;
+                return Some(info);
+            }
+            Ok(None) => None,
+            Err(_) => None
+        }
+    }
+
     pub async fn add_new_user(&self, user_info: UserInfo) -> Option<UserInfo> {
         let res = self
             .client
             .create(("user", &user_info.uuid.clone()))
             .content(user_info.clone())
             .await;
-        let rec: Result<Option<UserId>, Error> = self
+        let _rec: Result<Option<UserId>, Error> = self
             .client
             .create(("user_id", &user_info.user_name.clone()))
             .content(UserId {
@@ -48,11 +67,7 @@ impl Database {
             .create(("file", file_info.uuid.clone()))
             .content(file_info)
             .await;
-        match res {
-            Ok(Some(file)) => Some(file),
-            Ok(None) => None,
-            Err(_) => None
-        }
+        res.unwrap_or_else(|_| None)
     }
 
     pub async fn get_user_by_name(&self, user_name: String) -> Option<UserInfo> {
@@ -66,11 +81,7 @@ impl Database {
                     .client
                     .select(("user", id.uuid))
                     .await;
-                match res {
-                    Ok(Some(user)) => Some(user),
-                    Ok(None) => None,
-                    Err(_) => None
-                }
+                res.unwrap_or_else(|_| None)
             }
             Ok(None) => None,
             Err(_) => None
@@ -87,13 +98,7 @@ impl Database {
                     .client
                     .select(("user", user_id_found))
                     .await;
-                match result {
-                    Ok(might_be_user) => match might_be_user {
-                        Some(user) => Some(user),
-                        None => None
-                    },
-                    Err(_) => None
-                }
+                result.unwrap_or_else(|_| None)
             }
             None => None
         }
@@ -101,7 +106,8 @@ impl Database {
 
     pub async fn get_all_users_files(&self, session_id: String) -> Option<Vec<String>> {
         let user_profile = self
-            .get_user_by_session_id(session_id).await;
+            .get_user_by_session_id(session_id)
+            .await;
         match user_profile {
             Some(user) => Some(user.accessible_files_uuids),
             None => None
@@ -127,7 +133,7 @@ impl Database {
             .select(("session", session_id.clone()))
             .await;
         match res {
-            Ok(Some(session_id)) => true,
+            Ok(Some(_)) => true,
             Ok(None) => false,
             Err(_) => false,
         }
@@ -144,6 +150,7 @@ impl Database {
             Err(_) => None
         }
     }
+
     pub async fn get_file(&self, file_id: String) -> Option<FileInfo> {
         let res = self
             .client
@@ -157,13 +164,7 @@ impl Database {
             .client
             .delete(("session", session_id))
             .await;
-        match res {
-            Ok(session) => match session {
-                Some(session_found) => Some(session_found),
-                None => None
-            }
-            Err(_) => None,
-        }
+        res.unwrap_or_else(|_| None)
     }
 
     pub async fn get_all_file_info(&self, user_id: String) -> Option<UserFilesToShow> {
@@ -187,5 +188,14 @@ impl Database {
             }
             None => None
         }
+    }
+
+    pub async fn put_master_key(&self, master_key: String) -> Option<String> {
+        let res = self
+            .client
+            .create(("master_key", 0))
+            .content(master_key)
+            .await;
+        res.unwrap_or_else(|_| None)
     }
 }
