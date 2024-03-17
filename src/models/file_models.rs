@@ -29,9 +29,10 @@ pub struct UserCreateProfile {
 
 }
 #[derive(Serialize, Deserialize, Debug)]
-pub struct UserId {
+pub struct UuidStruct {
     pub uuid: String,
 }
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MasterKey {

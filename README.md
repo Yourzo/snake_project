@@ -5,7 +5,7 @@ sending information about uploaded file, uploading file, getting information
 about currently stored files and user information.
 
 ## Running
-* Server require database running on ``127.0.0.1:8000`` to start (this has to be changed in case of deployment)
+* Server require database running on ``127.0.0.1:8000`` to start
 ## Technologies used
 * back-end framework: [Actix web](https://actix.rs)
 * database: [SurrealDB](https://surrealdb.com)
@@ -14,8 +14,8 @@ about currently stored files and user information.
 ## BIG plans for future:
 * Finish backend so it's capable of planned functionality
 * Create CLI client application (as a homework for c# class)
-* Add possibility to control server remotely, even though there is nothing much to control
-* Create client with user-friendly UI that could people like sister or brother use
+* Add possibility to control server remotely, even though there is not much to control
+* Create client with user-friendly UI that could people like my sister or brother use
 * Think and research some ways to check if requests from client didn't come for too long
 
 ## Small plans / TODOs:
@@ -37,13 +37,14 @@ like session validation or password encryption.
 * ``POST /upload_file/{session_id}``
 * ``POST /login``
 * ``GET /get_all_files_info/{session_id}``
-* ``POST /set_user/{master_key}`` 
+* ``POST /set_user/{master_key}``
+* ``GET /get_file/{session_id}``
 ## Planed endpoints:
 Here I will add as I come up with what client app could need.
-* ``GET /download_file/{session_id}``
 * ``GET /file_info/{session_id}``
 
 ## Current problems/ideas/thoughts
-There is problem with postman where I don't know how to send file and JSon in one http request
+* There is problem with postman where I don't know how to send file and JSON in one http request
 so actix can sort them properly,
 if I could solve that I want to make ``file_upload_data`` and ``upload_file`` one function.
+* Another idea is that I have to sort file: api/api.rs into few different file by what are they doing 

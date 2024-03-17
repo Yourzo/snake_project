@@ -1,7 +1,7 @@
 use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::opt::auth::Root;
 use surrealdb::{Surreal, Error};
-use crate::models::file_models::{UserId, UserFilesToShow, UserSessionIdMatch};
+use crate::models::file_models::{UuidStruct, UserFilesToShow, UserSessionIdMatch};
 use crate::models::{FileInfo, UserInfo};
 
 #[derive(Clone)]
@@ -51,10 +51,10 @@ impl Database {
             .create(("user", &user_info.uuid.clone()))
             .content(user_info.clone())
             .await;
-        let _rec: Result<Option<UserId>, Error> = self
+        let _rec: Result<Option<UuidStruct>, Error> = self
             .client
             .create(("user_id", &user_info.user_name.clone()))
-            .content(UserId {
+            .content(UuidStruct {
                 uuid: user_info.uuid
             })
             .await;
@@ -71,7 +71,7 @@ impl Database {
     }
 
     pub async fn get_user_by_name(&self, user_name: String) -> Option<UserInfo> {
-        let rec: Result<Option<UserId>, Error> = self
+        let rec: Result<Option<UuidStruct>, Error> = self
             .client
             .select(("user_id", user_name))
             .await;

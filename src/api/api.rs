@@ -1,12 +1,16 @@
-use actix_multipart::form::MultipartForm;
+use std::io::{Read, Error};
+
 use actix_web::{get, post, patch, HttpResponse, Responder, HttpRequest};
+use actix_web::web::{Json, Path, Data, Bytes};
+use actix_multipart::form::MultipartForm;
+use actix_files::NamedFile;
+
+use log::error;
 use uuid::Uuid;
-use actix_web::web::{Json, Path, Data};
+use async_stream::stream;
+
 use crate::database::Database;
-use crate::models::file_models::{
-    GetFileUrl, MasterKey, UploadData, UploadForm,
-    UserCreateProfile, UserLogin, UserSessionIdMatch, UuidUrl
-};
+use crate::models::file_models::{GetFileUrl, MasterKey, UploadData, UploadForm, UserCreateProfile, UserLogin, UserSessionIdMatch, UuidStruct, UuidUrl};
 use crate::models::{FileInfo, UserInfo};
 
 static MAX_SIZE_ALLOWED: usize = 50_000_000;
@@ -14,16 +18,14 @@ static MAX_SIZE_ALLOWED: usize = 50_000_000;
 #[post("/login")]
 async fn login_user(body: Json<UserLogin>, db: Data<Database>) -> impl Responder {
     let user_login = body.into_inner();
-    let mut buffer = Uuid::encode_buffer();
-    let session_id_created = Uuid::new_v4().simple().encode_lower(&mut buffer);
-
     let user_info = db.get_user_by_name(user_login.user_name).await;
+
     match user_info {
         Some(user) => {
             if user.password == user_login.password {
                 let res = db.into_inner().set_session(UserSessionIdMatch {
                     user_id: user.uuid,
-                    session_id: String::from(session_id_created)
+                    session_id: Uuid::new_v4().to_string(),
                 }).await;
                 return HttpResponse::Ok().body(res.unwrap().session_id);
             }
@@ -33,6 +35,50 @@ async fn login_user(body: Json<UserLogin>, db: Data<Database>) -> impl Responder
     }
 }
 
+//TODO property test out DO NOT commit until then
+#[get("/get_file/{session_id}")]
+async fn get_file(
+    session: Path<UuidUrl>,
+    uuid_file: Json<UuidStruct>,
+    db: Data<Database>
+) -> impl Responder {
+    let file_data_opt = db.get_file(uuid_file.into_inner().uuid).await;
+
+    match file_data_opt {
+        Some(file_data) => {
+            let file_path = file_data.uuid;
+            if let Ok(mut file) = NamedFile::open(file_path.clone()) {
+                let my_data_stream = stream! {
+                    let mut chunk =vec![0u8; 10 * 1024 * 1024];//chunk size
+                    loop {
+                        match file.read(&mut chunk) {
+                            Ok(n) => {
+                                if n == 0 {
+                                    break;
+                                }
+
+                                yield Result::<Bytes, Error>::Ok(Bytes::from(chunk[..n].to_vec()));
+                            }
+                            Err(e) => {
+                                error!("Error reading file: {}", e);
+                                yield Result::<Bytes, Error>::Err(e);
+                                break;
+                            }
+                        }
+                    }
+                };
+                HttpResponse::Ok()
+                    .content_type("application/octet-stream")
+                    .streaming(my_data_stream)
+            } else {
+                HttpResponse::NotFound().body("file not found")
+            }
+        }
+        None => HttpResponse::BadRequest().body("file user not file")
+    }
+}
+
+//problem of this method is that it expect client app to build path
 #[post("/file_upload_data/{session_id}")]
 async fn info_to_upload(
     db: Data<Database>,
@@ -87,10 +133,12 @@ async fn get_all_allowed_files_info(path: Path<UuidUrl>, db: Data<Database>) -> 
 async fn get_all_allowed(path: Path<UuidUrl>, db: Data<Database>) -> impl Responder {
     let uuid = path.into_inner();
     if db.verify_session(uuid.session_id.clone()).await {
-        let res = db.get_all_users_files(uuid.session_id.clone()).await;
-        match res {
-            Some(files) => return HttpResponse::Ok().json(files),
-            None => return HttpResponse::NotFound().body("some how i cant: "),
+        let res = db
+            .get_all_users_files(uuid.session_id.clone()).
+            await;
+        return match res {
+            Some(files) => HttpResponse::Ok().json(files),
+            None => HttpResponse::NotFound().body("some how i cant: "),
         }
     }
     HttpResponse::Unauthorized().body("session was not found")
@@ -117,3 +165,4 @@ async fn set_user(
         None => HttpResponse::PreconditionFailed().body("this user creation failed")
     }
 }
+
